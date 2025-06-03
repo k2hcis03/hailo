@@ -1067,6 +1067,14 @@ Rockchip 미디어 프로세스 플랫폼(MPP)
 MPP는 멀티미디어(비디오 및 이미지) 처리에 높은 성능을 제공하는 Rockchip SoC용 라이브러리입니다.
  
 Hailo Filter – 공부 필요…..
+컴파일 할 때, export필요 (에러 발생)
+./scripts/gstreamer/install_hailo_gstreamer.sh
+export TAPPAS_WORKSPACE /home/k2hcis03/ProgramFiles/hailo/tappas
+k2hcis03@k2hcis03:~/ProgramFiles/hailo/tappas$ sudo apt install meson
+sudo apt install gcc-12
+sudo apt install g++-12
+
+
 개요
 Hailofilter는 사용자가 hailonet의 출력 텐서에 후처리 연산을 적용할 수 있도록 하는 요소입니다. 사용자가 작성하는 컴파일된 .so 파일의 진입점을 제공하며, 이 파일 안에서 사용자는 원본 이미지 프레임, 해당 프레임에 대해 네트워크에서 출력된 텐서, 그리고 첨부된 모든 메타데이터에 접근할 수 있습니다. 먼저 hailofilter는 싱크 패드에서 버퍼를 읽은 다음, 제공된 .so 파일에 정의된 필터를 적용하고, 마지막으로 필터링된 버퍼를 소스 패드를 따라 파이프라인으로 전송합니다.
 매개변수
