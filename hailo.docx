@@ -1,1 +1,1151 @@
+https://github.com/hailo-ai
+ 
+레포 이름	핵심 콘셉트	안에 뭐가 들어 있나?	언제 쓰면 좋은가?
+hailo-rpi5-examples	라즈베리파이 5 전용 데모 파이프라인	* install.sh : Pi 5 + Hailo-8L SDK 원커맨드 설치* pipelines/ : object-detect, pose-est, seg 등 GStreamer 기반 파이프라인 스크립트* community_projects/ : 커뮤니티 기여 예제 모음 (GitHub)
+Pi 5 키트에 SDK·예제 한방에 설치하고 “카메라로 바로 추론” 해보고 싶을 때
+hailo_model_zoo	사전 학습 모델 & 빌드 툴체인	* hailomz CLI (parse → optimize → compile → eval)* cfg/networks/ YAML + cfg/alls/ NMS 스크립트* training/ Dockerfile·리트레인 예제 (YOLOv8 등) (GitHub)
+● 모델 탐색·벤치마크● 내 데이터로 리트레인 → HEF 생성
+tappas	“풀 앱” 샘플 (GStreamer 플러그인 기반)	* apps/ : 스마트시티·스마트리테일 등 End-to-End 파이프라인* docs/ : 플러그인 아키텍처·GUI 데모 (GitHub)
+레퍼런스 코드로 ‘완제품 프로토타입’을 빠르게 만들고 싶을 때
+Hailo-Application-Code-Examples	런타임 수준의 순수 코드 예제 (C++/Python)	* runtime/python/ : object-detect, image-class minimal 예제* runtime/cpp/ : HailoRT 직접 호출 샘플 (GitHub, GitHub)
+“SDK 큰 틀은 알겠는데, 헬로월드 스타일로 최소 코드만 보고 싶다” 할 때
+hailort	Hailo Runtime 라이브러리(OSS)	* libhailort/ C API* pyhailort/ Python 바인딩* hailortcli/ 디바이스·추론 제어 CLI* driver/ PCIe 드라이버 소스(리눅스) (GitHub)
+HEF 로드·추론을 직접 코드에 통합할 때 (C++/Python)
+hailort-drivers	독립 배포 PCIe 커널 드라이버	소스·DKMS 빌드 스크립트·firmware 로더 (GitHub)
+커스텀 x86 서버에 Hailo-8 카드를 꽂아 사용할 때 커널 모듈을 직접 컴파일·설치해야 할 때
+  
+detection.py 전체 설명
+	
+1. 주요 목적
+- 카메라(또는 비디오 입력)로부터 프레임을 받아
+- Hailo AI 프로세서로 객체 검출을 수행
+- 검출 결과(예: 사람, 자동차 등)를 콘솔에 출력
+- (필요시) 프레임에 검출 결과를 표시하여 후처리 가능
+
+2. 주요 구성 요소
+1) 라이브러리 및 모듈 임포트
+- GStreamer: 실시간 미디어 스트림(비디오/오디오) 처리를 위한 프레임워크
+- OpenCV: 이미지 후처리 및 시각화
+- hailo: Hailo AI 프로세서용 Python API
+- hailo_apps_infra: Hailo 예제용 공통 유틸리티 및 파이프라인 관리 모듈
+
+2) 사용자 콜백 클래스 정의
+- app_callback_class를 상속받아 사용자 정의 변수/함수 추가 가능
+- 프레임 카운트, 임의 변수, 후처리용 함수 등 확장 가능
+
+3) 콜백 함수(app_callback) 정의
+- 프레임마다 호출
+- 객체 검출 결과(라벨, 바운딩박스, 신뢰도 등) 파싱
+- 사람(person)만 추출하여 콘솔에 출력
+- 필요시 프레임에 검출 결과를 그려서 후처리 가능
+
+4) 메인 실행부
+- user_app_callback_class 인스턴스 생성 (프레임 카운트 등 상태 관리)
+- GStreamerDetectionApp: GStreamer 기반 객체 검출 파이프라인 실행
+- app.run(): 파이프라인 시작
+
+3. 실행 방법
+1) 환경설정
+- setup_env.sh 스크립트 실행: source setup_env.sh
+- (필요시) 가상환경 활성화
+2) 예제 실행
+- 기본 실행: python basic_pipelines/detection.py
+- 라즈베리파이 카메라 입력: python basic_pipelines/detection.py --input rpi
+- USB 카메라 입력: python basic_pipelines/detection.py --input usb
+- 자세한 실행 옵션은 공식 README 참고
+
+4. 요약
+- detection.py는 Hailo AI 프로세서와 Raspberry Pi 5에서 실시간 객체 검출을 수행하는 예제입니다.
+- GStreamer 파이프라인을 통해 비디오 프레임을 받아 Hailo로 추론, 결과를 파싱하여 출력합니다.
+- 사용자 정의 콜백을 통해 검출 결과 후처리 및 확장도 가능합니다.
+
+추가로 궁금한 점이나, 코드의 특정 부분 설명이 필요하면 언제든 말씀해 주세요! (예: 파이프라인 구조, 콜백 함수 확장법, 입력 옵션 등)
+
+참고: https://github.com/hailo-ai/hailo-rpi5-examples 
+ 
+detection.py 코드부분 설명
+
+-	from hailo_apps_infra.hailo_rpi_common import (
+    get_caps_from_pad,
+    get_numpy_from_buffer,
+    app_callback_class,
+)
+
+1. 코드의 역할
+이 코드는 hailo_apps_infra 패키지의 hailo_rpi_common 모듈에서세 가지 함수/클래스를 import(가져오기) 하는 부분입니다.
+________________________________________
+2. 각 항목별 설명
+1) get_caps_from_pad
+•	설명:
+GStreamer의 pad(데이터가 흐르는 연결점)에서비디오의 포맷, 해상도(가로/세로 크기) 등의 정보를 추출하는 함수입니다.
+•	용도:
+비디오 프레임의 형식, 크기 등을 파악해서이후 프레임 처리(예: numpy 변환, 후처리 등)에 사용합니다.
+________________________________________
+2) get_numpy_from_buffer
+•	설명:
+GStreamer의 buffer(실제 비디오 데이터가 담긴 객체)에서numpy 배열(이미지 데이터)로 변환해주는 함수입니다.
+•	용도:
+AI 추론 결과를 시각화하거나, OpenCV 등으로 후처리할 때프레임 데이터를 numpy 배열로 변환해서 사용합니다.
+________________________________________
+3) app_callback_class
+•	설명:
+사용자 콜백 함수에서 사용할 수 있는 기본 상태 관리 클래스입니다.
+•	용도:
+프레임 카운트, 임의 변수, 상태 저장 등 콜백함수에서 여러 정보를 저장/관리할 때이 클래스를 상속받아 확장해서 사용합니다.
+________________________________________
+3. 요약
+•	이 코드는 Hailo 예제에서 비디오 데이터 처리와
+콜백 함수의 상태 관리를 쉽게 하기 위해공통 유틸리티 함수와 클래스를 가져오는 부분입니다.
+•	실제 객체 검출 파이프라인에서
+프레임 정보 추출, numpy 변환, 상태 관리에 필수적으로 사용됩니다.
+
+
+-	pad란?
+pad는 GStreamer(멀티미디어 프레임워크)에서데이터(비디오, 오디오 등)가 흐르는 입출력 포인트를 의미합니다.
+쉽게 말해:
+•	pad = 블록(요소, element)에서 데이터가 들어오거나 나가는 연결점
+________________________________________
+예시로 설명
+•	GStreamer 파이프라인은 여러 요소(element)들이 연결되어 있습니다.
+•	각 요소는 src pad(출력), sink pad(입력)을 가집니다.
+Apply to detection.py
+[카메라 소스] --src pad--> [AI 추론 요소] --src pad--> [디스플레이]
+         |                        |                        |
+     (출력 pad)               (입력 pad)               (입력 pad)
+•	src pad: 데이터(프레임 등)를 "내보내는" 역할
+•	sink pad: 데이터(프레임 등)를 "받아들이는" 역할
+________________________________________
+detection.py에서의 pad
+•	콜백 함수에서 pad를 통해
+현재 처리 중인 비디오 프레임의 정보(포맷, 해상도 등)를 얻거나데이터 버퍼를 받아올 수 있습니다.
+________________________________________
+요약
+•	pad는 GStreamer 요소(element)에서
+데이터가 들어오거나 나가는 연결점입니다.
+•	파이프라인에서 요소들을 연결할 때 pad끼리 연결합니다.
+-	from hailo_apps_infra.detection_pipeline import GStreamerDetectionApp
+1. 코드의 역할
+•	hailo_apps_infra 패키지의 detection_pipeline 모듈에서
+GStreamerDetectionApp 클래스를 import(가져오기)하는 코드입니다.
+________________________________________
+2. GStreamerDetectionApp란?
+1) GStreamerDetectionApp의 주요 목적
+•	GStreamer 기반 객체 검출(Detection) 파이프라인을
+간편하게 생성하고 실행할 수 있도록 도와주는 클래스입니다.
+•	Hailo AI 프로세서와 연동하여,
+비디오 입력 → AI 추론 → 결과 후처리까지의 전체 흐름을 관리합니다.
+________________________________________
+2) 주요 기능
+•	GStreamer 파이프라인 생성 및 관리
+•	카메라, 파일, 네트워크 등 다양한 입력 소스를 지원
+•	Hailo AI 추론 요소 자동 연결
+•	콜백 함수 등록
+•	프레임마다 사용자 정의 콜백(app_callback 등) 호출
+•	콜백에서 검출 결과 후처리, 시각화, 통계 등 자유롭게 구현 가능
+•	파이프라인 실행/정지/종료 관리
+•	.run() 메서드로 파이프라인을 실행
+•	필요시 중지, 재시작 등 제어 가능
+________________________________________
+3) 예제 코드에서의 사용
+python
+Apply to detection.py
+if __name__ == "__main__":
+    user_data = user_app_callback_class()
+    app = GStreamerDetectionApp(app_callback, user_data)
+    app.run()
+•	GStreamerDetectionApp 객체를 생성할 때
+콜백 함수(app_callback)와 상태 관리 객체(user_data)를 전달합니다.
+•	.run()을 호출하면
+GStreamer 파이프라인이 시작되고, 프레임마다 콜백이 호출되어 객체 검출 결과를 처리합니다.
+________________________________________
+3. 요약
+•	GStreamerDetectionApp은
+Hailo 기반 객체 검출 파이프라인을 쉽게 만들고 실행할 수 있게 해주는 핵심 관리 클래스입니다.
+•	파이프라인 생성, 입력/출력 관리, 콜백 연결 등
+복잡한 과정을 한 번에 처리해줍니다.
+
+
+
+
+
+
+
+
+
+
+-	app = GStreamerDetectionApp(app_callback, user_data)
+콜백 함수(app_callback)와user_data(사용자 정의 데이터/객체)를 함께 전달합니다.
+________________________________________
+1. app_callback의 역할
+•	이 함수는 프레임이 처리될 때마다 자동으로 호출됩니다.
+•	예시:
+python
+Apply to detection.py
+  def app_callback(pad, info, user_data):
+      # ... (여기서 user_data 사용)
+________________________________________
+2. user_data의 역할
+•	콜백 함수에서 사용할 수 있는 데이터/상태/메서드를
+user_data 객체에 담아서 전달합니다.
+•	예를 들어,
+•	프레임 카운트
+•	임의의 변수
+•	사용자 정의 함수
+•	최근 프레임 이미지 등
+다양한 정보를 저장하고, 콜백에서 활용할 수 있습니다.
+예시
+python
+Apply to detection.py
+class user_app_callback_class(app_callback_class):
+    def __init__(self):
+        super().__init__()
+        self.new_variable = 42
+    def new_function(self):
+        return "The meaning of life is: "
+•	이 클래스의 인스턴스가 user_data로 전달됩니다.
+•	콜백 함수에서 user_data.new_variable, user_data.new_function() 등으로 접근 가능합니다.
+________________________________________
+요약
+•	user_data는 콜백 함수에서 자유롭게 사용할 수 있는
+사용자 정의 데이터/상태/메서드를 담는 객체입니다.
+•	파이프라인 실행 중 필요한 정보를 저장하거나,
+여러 프레임에 걸쳐 상태를 유지할 때 매우 유용합니다.
+
+- POST_PROCESS 라이브러리 란?
+YOLO 객체 검출 모델의 후처리(Post-processing)를 담당하는 공유 라이브러리(so 파일)입니다.
+________________________________________
+1. 왜 post-process가 필요한가?
+•	딥러닝 객체 검출 모델(YOLO 등)은
+네트워크 추론 결과(원시 output)를 바로 박스, 클래스, 신뢰도로 해석할 수 없습니다.
+•	후처리(Post-processing)를 통해
+•	네트워크 출력 값을 실제 박스 좌표, 클래스, 신뢰도 등으로 변환
+•	NMS(Non-Maximum Suppression) 적용
+•	Letterbox(입력 크기 맞춤) 보정 등
+다양한 처리를 수행해야 합니다.
+________________________________________
+2. post_process_so의 주요 기능
+•	YOLO 모델의 output을 실제 검출 결과로 변환
+•	NMS(중복 박스 제거) 적용
+•	Letterbox 보정
+(입력 이미지를 네트워크 크기에 맞추기 위해 padding한 부분을 보정)
+•	필터링
+(score threshold, class filter 등)
+________________________________________
+3. filter_letterbox 함수
+•	filter_letterbox는
+Letterbox padding을 고려하여 박스 좌표를 원본 이미지 기준으로 변환하는후처리 함수입니다.
+•	YOLO 모델은 입력 이미지를 네트워크 크기에 맞추기 위해
+종종 Letterbox(검은 테두리 padding)를 사용합니다.
+•	이 함수는 네트워크 출력 박스 좌표를 실제 원본 이미지 좌표로 정확히 변환해줍니다.
+________________________________________
+4. 요약
+•	post_process 라이브러리(libyolo_hailortpp_postprocess.so)는
+YOLO 모델의 네트워크 출력 값을 실제 검출 결과(박스, 클래스, 신뢰도 등)로 변환하는 후처리(Post-processing) 전용 라이브러리입니다.
+•	주요 기능:
+•	NMS
+•	Letterbox 보정
+•	score/class 필터링
+•	원본 이미지 좌표 변환 등
+
+- NMS란?
+NMS는 Non-Maximum Suppression(비최대 억제)의 약자입니다.
+•	객체 검출(Object Detection)에서 중복된 박스(Bounding Box)를 제거하는 대표적인 후처리 기법입니다.
+________________________________________
+왜 필요한가?
+•	딥러닝 기반 객체 검출 모델(YOLO, SSD 등)은
+하나의 객체에 대해 여러 개의 박스(bounding box)를 예측하는 경우가 많습니다.
+•	이 중에서 가장 신뢰도(confidence score)가 높은 박스만 남기고
+나머지 겹치는 박스는 제거해야 실제 검출 결과가 깔끔해집니다.
+________________________________________
+동작 원리
+1.	모든 박스를 신뢰도(confidence) 기준으로 내림차순 정렬
+2.	가장 높은 신뢰도의 박스를 선택
+3.	선택된 박스와 겹치는(=IoU가 임계값 이상인) 다른 박스들을 제거
+•	IoU(Intersection over Union): 두 박스가 얼마나 겹치는지 나타내는 지표
+4.	남은 박스 중에서 다시 2~3번 반복
+5.	더 이상 남은 박스가 없을 때까지 반복
+________________________________________
+그림 예시
+text
+Apply to detection_pi...
+[여러 개의 겹치는 박스]
+ ┌─────────────┐
+ │   ┌─────┐   │
+ │   │     │   │
+ │   └─────┘   │
+ └─────────────┘
+→ NMS 적용 후
+┌─────┐
+│     │
+└─────┘
+(가장 신뢰도 높은 박스만 남음)
+________________________________________
+파라미터
+•	IoU 임계값(threshold):
+•	예: 0.5
+•	두 박스의 IoU가 0.5 이상이면 중복으로 간주하고 하나만 남김
+________________________________________
+코드 예시 (의사코드)
+python
+Apply to detection_pi...
+def nms(boxes, scores, iou_threshold):
+    # 1. 신뢰도 기준 내림차순 정렬
+    indices = scores.argsort()[::-1]
+    keep = []
+    while indices.size > 0:
+        i = indices[0]
+        keep.append(i)
+        # 2. IoU가 임계값 이상인 박스 제거
+        rest = indices[1:]
+        ious = compute_iou(boxes[i], boxes[rest])
+        indices = rest[ious < iou_threshold]
+    return keep
+________________________________________
+요약
+•	NMS(Non-Maximum Suppression)는
+객체 검출에서 중복 박스 제거를 위한 필수 후처리 기법입니다.
+•	신뢰도 높은 박스만 남기고,
+겹치는 박스는 제거하여 최종 검출 결과를 깔끔하게 만듭니다.
+
+
+-	class GStreamerDetectionApp(GStreamerApp):
+1. 클래스 선언 의미
+python
+Apply to detection_pi...
+class GStreamerDetectionApp(GStreamerApp):
+   # ...
+•	이 코드는 GStreamerDetectionApp이라는 새로운 클래스를 정의합니다.
+•	GStreamerApp 클래스를 상속(inheritance)합니다.
+•	즉, GStreamerApp의 모든 기능(메서드, 속성 등)을 그대로 물려받고,
+•	필요에 따라 기능을 추가하거나, 일부 메서드를 오버라이드(재정의)할 수 있습니다.
+________________________________________
+2. GStreamerApp의 역할
+•	GStreamerApp은 GStreamer 기반의 파이프라인 생성, 실행, 이벤트 처리 등
+공통적인 기능을 담당하는 기반(부모) 클래스입니다.
+•	예를 들어:
+•	파이프라인 생성 및 실행 (run)
+•	신호 처리, 종료 처리, 프레임 디스플레이 등
+•	사용자 콜백 연결, 옵션 파싱 등
+________________________________________
+3. GStreamerDetectionApp의 역할
+•	GStreamerDetectionApp은 객체 검출(Detection)에 특화된 파이프라인 설정 및 후처리를 담당하는 자식(파생) 클래스입니다.
+•	Detection(객체 검출) 예제에 맞게
+•	파이프라인 문자열(모델, 후처리 등) 구성
+•	객체 검출 결과 파싱 및 후처리
+•	사용자 콜백(app_callback)과 user_data 연동 등의 기능을 추가/재정의합니다.
+________________________________________
+4. 구조 예시
+python
+Apply to detection_pi...
+class GStreamerDetectionApp(GStreamerApp):
+    def __init__(self, app_callback, user_data):
+        # 부모 클래스 초기화
+        super().__init__(args, user_data)
+        # Detection에 특화된 추가 설정
+        self.app_callback = app_callback
+        # (예: 모델 경로, 후처리 파라미터 등)
+    def get_pipeline_string(self):
+        # Detection에 맞는 GStreamer 파이프라인 문자열 반환
+        return "videotestsrc ! ... ! hailonet ! ... ! identity name=identity_callback ! ..."
+    # 필요시 run(), bus_call() 등 메서드 오버라이드 가능
+________________________________________
+5. 요약
+•	GStreamerDetectionApp은 GStreamerApp을 상속받아
+객체 검출(Detection) 파이프라인에 특화된 기능을 추가/재정의한 클래스입니다.
+•	부모 클래스의 공통 기능을 활용하면서,
+Detection 예제에 필요한 설정과 후처리를 담당합니다.
+•	이 구조 덕분에,
+•	공통 기능은 GStreamerApp에 두고
+•	Detection, Classification 등 각 예제별로 자식 클래스를 만들어
+유지보수성과 확장성을 높일 수 있습니다.
+
+-	app.run()
+1. gstreamer_app.py의 run() 함수 동작 상세 설명
+전체 흐름 요약
+1.	GStreamer 파이프라인의 bus(메시지 통신 채널) 감시
+•	파이프라인에서 발생하는 이벤트(종료, 에러 등)를 처리
+2.	콜백 함수(Pad Probe) 연결
+•	파이프라인의 특정 요소(identity_callback)의 pad에 사용자 콜백(app_callback 등)을 연결
+3.	FPS 측정, QoS(품질관리) 설정 등 부가 기능 처리
+4.	파이프라인 실행
+•	GStreamer 파이프라인을 PLAYING 상태로 전환
+•	GLib 메인 루프를 실행하여 이벤트를 계속 처리
+5.	종료 및 정리
+•	파이프라인 정지, 리소스 해제, 프로세스 종료
+________________________________________
+주요 코드 단계별 설명
+python
+Apply to gstreamer_ap...
+def run(self):
+    # 1. 파이프라인 bus 감시 및 메시지 핸들러 등록
+    bus = self.pipeline.get_bus()
+    bus.add_signal_watch()
+    bus.connect("message", self.bus_call, self.loop)
+    # 2. Pad Probe(콜백) 연결
+    if not self.options_menu.disable_callback:
+        identity = self.pipeline.get_by_name("identity_callback")
+        if identity is not None:
+            identity_pad = identity.get_static_pad("src")
+            identity_pad.add_probe(Gst.PadProbeType.BUFFER, self.app_callback, self.user_data)
+    # 3. FPS 측정, QoS 비활성화 등
+    hailo_display = self.pipeline.get_by_name("hailo_display")
+    disable_qos(self.pipeline)
+    # 4. (옵션) 별도 프로세스/스레드 실행 (예: 프레임 디스플레이, 라즈베리파이 카메라)
+    if self.options_menu.use_frame:
+        display_process = multiprocessing.Process(target=display_user_data_frame, args=(self.user_data,))
+        display_process.start()
+    if self.source_type == "rpi":
+        picam_thread = threading.Thread(target=picamera_thread, args=(...))
+        self.threads.append(picam_thread)
+        picam_thread.start()
+    # 5. 파이프라인 상태 전환 및 실행
+    self.pipeline.set_state(Gst.State.PAUSED)
+    self.pipeline.set_latency(self.pipeline_latency * Gst.MSECOND)
+    self.pipeline.set_state(Gst.State.PLAYING)
+    # 6. (옵션) 파이프라인 구조 dot 파일로 저장
+    if self.options_menu.dump_dot:
+        GLib.timeout_add_seconds(3, self.dump_dot_file)
+    # 7. GLib 메인 루프 실행 (이벤트 처리 루프)
+    self.loop.run()
+    # 8. 종료 및 리소스 정리
+    try:
+        self.user_data.running = False
+        self.pipeline.set_state(Gst.State.NULL)
+        if self.options_menu.use_frame:
+            display_process.terminate()
+            display_process.join()
+        for t in self.threads:
+            t.join()
+    except Exception as e:
+        print(f"Error during cleanup: {e}", file=sys.stderr)
+    finally:
+        if self.error_occurred:
+            print("Exiting with error...", file=sys.stderr)
+            sys.exit(1)
+        else:
+            print("Exiting...")
+            sys.exit(0)
+________________________________________
+3. 요약
+•	detection.py의 app.run()을 호출하면
+→ gstreamer_app.py의 run()이 실제로 실행됩니다.
+•	이 함수는 GStreamer 파이프라인을 실행하고,
+콜백 연결, 이벤트 처리, 종료까지 전체 라이프사이클을 관리합니다.
+
+
+-	Connect pad probe to the identity element
+1. GStreamer에서 Pad Probe란?
+•	Pad: GStreamer 파이프라인에서 데이터(프레임 등)가 흐르는 입출력 지점입니다.
+•	Pad Probe: pad에 “탭”을 달아서, 데이터가 지나갈 때마다 특정 함수를 호출할 수 있게 하는 기능입니다.
+•	쉽게 말해, 프레임이 지나갈 때마다 내 콜백 함수가 실행되도록 하는 장치입니다.
+________________________________________
+2. 코드에서의 동작
+주요 코드
+python
+Apply to gstreamer_ap...
+identity = self.pipeline.get_by_name("identity_callback")
+if identity is not None:
+    identity_pad = identity.get_static_pad("src")
+    identity_pad.add_probe(Gst.PadProbeType.BUFFER, self.app_callback, self.user_data)
+단계별 설명
+1.	identity_callback 요소 찾기
+•	파이프라인에서 이름이 "identity_callback"인 요소를 찾습니다.
+•	이 요소는 GStreamer 파이프라인을 구성할 때 미리 추가되어 있어야 합니다.
+•	예시 파이프라인 문자열:
+... ! identity name=identity_callback ! ...
+2.	src pad(출력 pad) 가져오기
+•	identity_callback 요소의 src pad(출력 pad)를 가져옵니다.
+•	이 pad를 통해 프레임(버퍼)이 다음 요소로 전달됩니다.
+3.	Pad Probe(콜백) 등록
+•	identity_pad.add_probe(Gst.PadProbeType.BUFFER, self.app_callback, self.user_data)
+•	BUFFER 타입의 데이터(프레임)가 pad를 통과할 때마다
+self.app_callback 함수가 호출됩니다.
+•	self.user_data는 콜백 함수에 함께 전달되어
+상태 관리, 프레임 카운트 등 다양한 용도로 사용됩니다.
+________________________________________
+3. 실제 동작 예시
+•	비디오 프레임이 파이프라인을 따라 흐르다가
+identity_callback 요소를 통과할 때마다→ app_callback(pad, info, user_data) 함수가 호출됩니다.
+•	이 함수에서
+•	프레임 데이터 추출
+•	객체 검출 결과 파싱
+•	프레임 카운트 증가
+•	시각화/로깅 등
+원하는 모든 처리를 할 수 있습니다.
+________________________________________
+4. 왜 identity 요소를 쓰는가?
+•	GStreamer의 identity 요소는 데이터에 아무런 변형을 가하지 않고
+중간에 “탭”을 달 수 있게 해주는 역할을 합니다.
+•	이 요소에 이름(name=identity_callback)을 붙여
+코드에서 쉽게 찾아서 pad probe를 연결할 수 있습니다.
+________________________________________
+5. 요약
+•	Pad Probe는 GStreamer 파이프라인에서 데이터가 흐르는 pad에 콜백 함수를 연결하는 기능입니다.
+•	identity_callback 요소의 src pad에 probe를 달면 프레임이 지나갈 때마다 내 콜백이 실행됩니다.
+•	이 방식으로 실시간 프레임 후처리, 통계, 시각화 등
+다양한 커스텀 처리가 가능합니다.
+
+
+1. detection.py 코드 정리
+- 이 코드는 미리 학습된 객체를 검출하는 기능을 함. 여기서 미리 학습된 것은 COCO labels (80classes)이다. 만약 다른 객체를 학습시키기 위해서는 https://github.com/hailo-ai/hailo-rpi5-examples/blob/main/doc/retraining-example.md#using-yolov8-retraining-docker 참조
+- 초기화가 끝나고 run()가 호출되면 기존에 여러 단계가 실행되는데, 검출에 대한 초기화는 1) 필요한 pipeline 생성 생성된 pipeline은 pipeline.py에서 정의된 get_pipeline_string()에서 확인 가능 
+ 
+- 위 코드를 보면 파이프라인은 source -> detection -> detection_wrapper -> tracker -> user_callback -> display 등으로 연결되어 있음.
+- 위 pipeline을 통한 추론 데이터 결과는 detection.py app_callback(()에서 파싱을 진행
+- app_callback()에서 hailo버퍼에서 데이터를 가져와 필요한 기능 수행
+ 
+- hailo.HAILO_DETECTION, HAILO_UNIQUE_ID 등으로 기능을 제어함.
+
+
+2. bar-code retrain
+- 학습 데이터 set 구조 및 labels 해설
+ 
+항목	값(정규화)	값(픽셀, 416×416 이미지)	그림에서 표시
+class id	0	Barcode 클래스	(텍스트로만)
+x_center	0.5264	≈ 219 px	빨간 점의 x
+y_center	0.5697	≈ 237 px	빨간 점의 y
+width	0.6298	≈ 262 px	연두 박스 가로 길이
+height	0.7981	≈ 332 px	연두 박스 세로 길이
+ 
+
+
+Pose_estimation.py 전체 설명
+1. 주요 목적
+•	카메라(또는 비디오 입력)로부터 프레임을 받아
+•	Hailo AI 프로세서로 사람 검출 및 포즈 추정(랜드마크 추출)을 수행
+•	검출 결과(사람, 신뢰도, 랜드마크 좌표 등)를 콘솔에 출력
+•	(옵션) 프레임에 랜드마크(예: 눈 위치 등)를 시각화하여 표시
+________________________________________
+2. 사용자 콜백 클래스 정의
+python
+Apply to pose_estimat...
+class user_app_callback_class(app_callback_class):
+    def __init__(self):
+        super().__init__()
+•	app_callback_class를 상속받아 사용자 정의 콜백 클래스 생성
+•	필요시 프레임 카운트, 상태 변수 등 확장 가능
+________________________________________
+3. 콜백 함수(app_callback) 정의
+•	프레임마다 호출되는 함수로,
+비디오 프레임에서 사람(person) 객체를 검출하고각 객체의 랜드마크(예: 눈, 코, 관절 등)를 추출하여좌표를 계산하고, (옵션) 프레임에 시각화
+주요 동작:
+1.	프레임 카운트 증가 및 정보 문자열 생성
+2.	프레임 데이터(numpy 배열) 추출 (옵션)
+3.	ROI(Region of Interest)에서 객체 검출 결과 추출
+4.	각 detection(객체)에 대해:
+•	label, bbox, confidence 추출
+•	label이 "person"인 경우만 처리
+•	트랙 ID 추출(있으면)
+•	랜드마크(관절점) 추출
+•	왼쪽/오른쪽 눈 좌표 계산 및 시각화
+5.	(옵션) 프레임을 BGR로 변환 후 저장
+6.	결과 문자열 출력
+________________________________________
+4. 메인 실행 부
+python
+Apply to pose_estimat...
+if __name__ == "__main__":
+    user_data = user_app_callback_class()
+    app = GStreamerPoseEstimationApp(app_callback, user_data)
+    app.run()
+•	사용자 콜백 클래스 인스턴스 생성
+•	GStreamer 기반 포즈 추정 파이프라인(GStreamerPoseEstimationApp) 생성
+•	파이프라인 실행(app.run())
+________________________________________
+5. 실행 방법
+1) 환경설정
+•	setup_env.sh 스크립트 실행
+bash
+Apply to pose_estimat...
+Run
+  source setup_env.sh
+•	(필요시) 가상환경 활성화
+2) 예제 실행
+•	기본 실행
+bash
+Apply to pose_estimat...
+Run
+  python basic_pipelines/pose_estimation.py
+•	입력 소스 변경 등 옵션은 공식 README 참고
+________________________________________
+6. 요약
+•	pose_estimation.py는 Hailo AI 프로세서와 Raspberry Pi 5에서
+사람 검출 및 포즈 추정(랜드마크 추출)을 실시간으로 수행하는 예제입니다.
+•	GStreamer 파이프라인을 통해 비디오 프레임을 받아
+Hailo로 추론, 결과를 파싱하여각 사람 객체의 랜드마크(눈, 관절 등) 좌표를 계산하고(옵션) 프레임에 시각화합니다.
+•	사용자 콜백을 통해 후처리, 시각화, 통계 등 다양한 확장이 가능합니다.
+ 
+Pose_estimation.py 코드부분 설명
+ 
+단계별 상세 설명
+1. 검출 결과 반복
+•	for detection in detections:
+→ 검출된 모든 객체(Detection)를 하나씩 처리
+2. 객체 정보 추출
+•	label = detection.get_label()
+→ 객체의 클래스(예: person, car 등) 추출
+•	bbox = detection.get_bbox()
+→ 객체의 바운딩 박스(좌표, 크기) 추출
+•	confidence = detection.get_confidence()
+→ 신뢰도(확률) 추출
+3. 사람(person)만 처리
+•	if label == "person":
+→ 사람 객체만 아래 로직 실행
+4. 트랙 ID 추출 (옵션)
+•	track = detection.get_objects_typed(hailo.HAILO_UNIQUE_ID)
+→ 트래킹 ID가 있으면 추출 (동일 인물 추적용)
+•	track_id = track[0].get_id()
+→ 트랙 ID 값 저장
+5. 랜드마크(관절점) 추출
+•	landmarks = detection.get_objects_typed(hailo.HAILO_LANDMARKS)
+→ 해당 detection에 랜드마크 정보가 있으면 추출
+•	points = landmarks[0].get_points()
+→ 랜드마크 좌표 리스트(예: 눈, 코, 입, 관절 등)
+6. 특정 부위(눈) 좌표 계산 및 표시
+•	for eye in ['left_eye', 'right_eye']:
+→ 왼쪽/오른쪽 눈에 대해 반복
+•	keypoint_index = keypoints[eye]
+→ 해당 부위의 인덱스(예: 0=left_eye, 1=right_eye 등)
+•	point = points[keypoint_index]
+→ 해당 부위의 상대 좌표(0~1 사이)
+•	x = int((point.x() * bbox.width() + bbox.xmin()) * width)
+→ 바운딩박스 내 상대좌표를 원본 이미지 좌표로 변환
+•	y = int((point.y() * bbox.height() + bbox.ymin()) * height)
+→ y좌표 변환
+•	cv2.circle(frame, (x, y), 5, (0, 255, 0), -1)
+→ 프레임에 해당 위치에 원(점) 표시 (OpenCV 사용)
+7. 결과 문자열에 정보 추가
+•	각 detection, 각 눈의 좌표 정보를 string_to_print에 추가
+(콘솔 출력 또는 로그용)
+________________________________________
+요약
+•	사람(person) 객체에 대해
+•	트랙 ID 추출(있으면)
+•	랜드마크(관절점) 추출(있으면)
+•	왼쪽/오른쪽 눈 좌표를 원본 이미지 기준으로 계산
+•	프레임에 시각화(점 표시)
+•	좌표 정보 문자열로 저장
+•	포즈 추정 결과를 시각화하고,
+각 부위의 정확한 위치를 계산하는 핵심 로직입니다.
+
+ 
+Instance_segmentation.py 전체 설명
+1. 주요 목적
+•	카메라(또는 비디오 입력)로부터 프레임을 받아
+•	Hailo AI 프로세서로 객체 검출 및 인스턴스 세그멘테이션 수행
+•	검출된 객체(예: 사람)에 대해 픽셀 단위 마스크 생성
+•	각 객체별로 고유한 색상으로 마스크를 시각화
+•	결과를 콘솔에 출력하고 프레임에 시각화
+________________________________________
+2. 사용자 콜백 클래스 정의
+python
+Apply to instance_seg...
+class user_app_callback_class(app_callback_class):
+    def __init__(self):
+        super().__init__()
+        self.frame_skip = 2  # 2프레임마다 한 번씩만 처리
+•	app_callback_class 상속
+•	frame_skip: 연산량 감소를 위해 2프레임마다 한 번씩만 처리
+•	미리 정의된 COLORS: 각 객체를 구분하기 위한 색상 리스트
+________________________________________
+3. 콜백 함수(app_callback) 정의
+주요 동작:
+1.	프레임 전처리
+•	프레임 카운트 증가
+•	frame_skip에 따른 프레임 건너뛰기
+•	이미지 크기를 1/4로 축소(성능 향상)
+2.	객체 검출 결과 처리
+•	ROI에서 detection 객체 추출
+•	각 detection에 대해:
+•	label, bbox, confidence 추출
+•	"person" 객체만 처리
+3.	인스턴스 세그멘테이션
+•	각 객체의 마스크 데이터 추출
+•	마스크 크기를 ROI에 맞게 조정
+•	ROI 좌표 계산 및 경계 처리
+4.	시각화
+•	각 객체별로 고유 색상 할당(track_id 기반)
+•	마스크를 프레임에 반투명하게 오버레이
+•	BGR 변환 후 프레임 저장
+________________________________________
+4. 메인 실행부
+python
+Apply to instance_seg...
+if __name__ == "__main__":
+    user_data = user_app_callback_class()
+    app = GStreamerInstanceSegmentationApp(app_callback, user_data)
+    app.run()
+•	사용자 콜백 클래스 인스턴스 생성
+•	GStreamer 기반 인스턴스 세그멘테이션 파이프라인 생성
+•	파이프라인 실행
+________________________________________
+주요 특징
+1.	성능 최적화
+•	frame_skip으로 처리할 프레임 수 감소
+•	이미지 크기를 1/4로 축소
+2.	마스크 처리
+•	1D 배열을 2D 마스크로 변환
+•	ROI 크기에 맞게 마스크 크기 조정
+•	경계 처리로 안정성 확보
+3.	시각화
+•	track_id에 따른 고유 색상 할당
+•	반투명 마스크 오버레이
+•	축소된 해상도로 처리
+________________________________________
+이 코드는 객체 검출과 세그멘테이션을 결합하여, 각 객체의 픽셀 단위 마스크를 생성하고 시각화하는 고급 컴퓨터 비전 예제입니다.
+
+Pose_estimation.py 코드부분 설명
+ 
+libyolov5seg_postprocess.so 라이브러리는 YOLOv5-Segmentation 모델의 후처리를 담당하는 공유 라이브러리입니다.
+________________________________________
+1. 주요 기능
+1) 객체 검출(Detection) 후처리
+•	바운딩 박스 좌표 변환
+•	신뢰도(confidence) 필터링
+•	NMS(Non-Maximum Suppression) 적용
+•	클래스 분류 결과 처리
+2) 세그멘테이션(Segmentation) 후처리
+•	마스크 데이터 디코딩
+•	마스크 크기 조정
+•	마스크-바운딩박스 정렬
+•	마스크 임계값 적용
+________________________________________
+2. YOLOv5-Seg 특화 기능
+YOLOv5-Seg는 일반 YOLOv5와 달리 세그멘테이션 기능이 추가되어 있어:
+1.	마스크 프로토타입 처리
+•	모델이 출력하는 마스크 프로토타입을 실제 마스크로 변환
+•	각 객체별 마스크 생성
+2.	마스크 정제
+•	마스크 해상도 조정
+•	노이즈 제거
+•	경계 스무딩
+3.	객체-마스크 연결
+•	각 검출 객체와 해당하는 마스크를 매칭
+•	ROI 기반 마스크 정렬
+________________________________________
+3. 처리 과정 예시
+text
+Apply to instance_seg...
+[YOLOv5-Seg 출력]
+↓
+1. 객체 검출 후처리
+   - 바운딩 박스 변환
+   - NMS 적용
+↓
+2. 마스크 프로토타입 처리
+   - 마스크 디코딩
+   - 해상도 조정
+↓
+3. 객체-마스크 매칭
+   - 각 객체에 마스크 할당
+↓
+4. 최종 출력
+   - 검출 결과 + 마스크
+________________________________________
+4. 주요 특징
+1.	최적화된 성능
+•	C/C++로 구현되어 빠른 처리 속도
+•	메모리 효율적 관리
+•	GPU/CPU 병렬 처리 지원
+2.	유연한 설정
+•	다양한 입력 크기 지원
+•	파라미터 조정 가능
+•	다양한 출력 포맷 지원
+3.	안정성
+•	경계 조건 처리
+•	에러 핸들링
+•	메모리 누수 방지
+________________________________________
+5. 요약
+•	libyolov5seg_postprocess.so는
+YOLOv5-Seg 모델의 출력을 실제 사용 가능한객체 검출 + 세그멘테이션 결과로 변환하는핵심 후처리 라이브러리입니다.
+•	객체 검출과 세그멘테이션을 모두 처리하여,
+각 객체의 위치(바운딩 박스)와픽셀 단위 마스크를 생성합니다.
+
+ 
+def app_callback(pad, info, user_data): 함수는 GStreamer 파이프라인에서 프레임(버퍼)이 도착할 때마다 호출되는 콜백 함수입니다.아래는 instance_segmentation.py 예제를 기준으로 단계별로 자세히 설명드리겠습니다.
+________________________________________
+1. 함수 시그니처
+python
+Apply to instance_seg...
+def app_callback(pad, info, user_data):
+•	pad: GStreamer에서 데이터가 흐르는 연결점(출력 pad)
+•	info: 현재 프레임(버퍼)와 관련된 정보(Gst.PadProbeInfo)
+•	user_data: 사용자 정의 데이터/상태(프레임 카운트, 옵션 등)
+________________________________________
+2. 주요 동작 단계별 설명
+1) 버퍼(프레임) 추출 및 유효성 검사
+python
+Apply to instance_seg...
+buffer = info.get_buffer()
+if buffer is None:
+    return Gst.PadProbeReturn.OK
+•	현재 도착한 프레임(버퍼)을 추출
+•	버퍼가 없으면(유효하지 않으면) 바로 리턴
+________________________________________
+2) 프레임 카운트 및 프레임 스킵
+python
+Apply to instance_seg...
+user_data.increment()
+string_to_print = f"Frame count: {user_data.get_count()}\n"
+if user_data.get_count() % user_data.frame_skip != 0:
+    return Gst.PadProbeReturn.OK
+•	프레임 카운트 증가
+•	frame_skip 값에 따라 일부 프레임만 처리(성능 최적화)
+________________________________________
+3) 프레임 정보 및 해상도 축소
+python
+Apply to instance_seg...
+format, width, height = get_caps_from_pad(pad)
+reduced_width = width // 4
+reduced_height = height // 4
+•	프레임의 포맷, 해상도 추출
+•	해상도를 1/4로 축소(연산량 감소)
+________________________________________
+4) 프레임 데이터(numpy 배열) 추출 및 리사이즈
+python
+Apply to instance_seg...
+if user_data.use_frame and format is not None and width is not None and height is not None:
+    frame = get_numpy_from_buffer(buffer, format, width, height)
+    reduced_frame = cv2.resize(frame, (reduced_width, reduced_height), interpolation=cv2.INTER_AREA)
+•	프레임을 numpy 배열로 변환
+•	해상도를 축소하여 reduced_frame 생성
+________________________________________
+5) 객체 검출 결과 추출
+python
+Apply to instance_seg...
+roi = hailo.get_roi_from_buffer(buffer)
+detections = roi.get_objects_typed(hailo.HAILO_DETECTION)
+•	현재 프레임에서 검출된 객체 리스트 추출
+________________________________________
+6) 각 객체별 정보 파싱 및 마스크 처리
+python
+Apply to instance_seg...
+for detection in detections:
+    label = detection.get_label()
+    bbox = detection.get_bbox()
+    confidence = detection.get_confidence()
+    if label == "person":
+        # 트랙 ID 추출
+        track_id = 0
+        track = detection.get_objects_typed(hailo.HAILO_UNIQUE_ID)
+        if len(track) == 1:
+            track_id = track[0].get_id()
+        string_to_print += (f"Detection: ID: {track_id} Label: {label} Confidence: {confidence:.2f}\n")
+        # 인스턴스 마스크 처리
+        if user_data.use_frame:
+            masks = detection.get_objects_typed(hailo.HAILO_CONF_CLASS_MASK)
+            if len(masks) != 0:
+                mask = masks[0]
+                mask_height = mask.get_height()
+                mask_width = mask.get_width()
+                data = np.array(mask.get_data()).reshape((mask_height, mask_width))
+                # ROI 크기에 맞게 마스크 리사이즈
+                roi_width = int(bbox.width() * reduced_width)
+                roi_height = int(bbox.height() * reduced_height)
+                resized_mask_data = cv2.resize(data, (roi_width, roi_height), interpolation=cv2.INTER_LINEAR)
+                # ROI 좌표 계산 및 경계 처리
+                x_min, y_min = int(bbox.xmin() * reduced_width), int(bbox.ymin() * reduced_height)
+                x_max, y_max = x_min + roi_width, y_min + roi_height
+                y_min = max(y_min, 0)
+                x_min = max(x_min, 0)
+                y_max = min(y_max, reduced_frame.shape[0])
+                x_max = min(x_max, reduced_frame.shape[1])
+                if x_max > x_min and y_max > y_min:
+                    # 마스크 오버레이 생성 및 적용
+                    mask_overlay = np.zeros_like(reduced_frame)
+                    color = COLORS[track_id % len(COLORS)]
+                    mask_overlay[y_min:y_max, x_min:x_max] = (resized_mask_data[:y_max-y_min, :x_max-x_min, np.newaxis] > 0.5) * color
+                    reduced_frame = cv2.addWeighted(reduced_frame, 1, mask_overlay, 0.5, 0)
+•	각 객체에 대해:
+•	클래스, 바운딩박스, 신뢰도 추출
+•	"person"만 처리
+•	트랙 ID 추출
+•	마스크 데이터 추출 및 2D로 변환
+•	ROI 크기에 맞게 마스크 리사이즈
+•	ROI 좌표 계산 및 경계 처리
+•	고유 색상으로 마스크 오버레이 생성 및 프레임에 적용
+________________________________________
+7) 결과 출력 및 프레임 저장
+python
+Apply to instance_seg...
+print(string_to_print)
+if user_data.use_frame:
+    reduced_frame = cv2.cvtColor(reduced_frame, cv2.COLOR_RGB2BGR)
+    user_data.set_frame(reduced_frame)
+•	콘솔에 결과 출력
+•	(옵션) 프레임을 BGR로 변환 후 저장
+________________________________________
+8) GStreamer에 OK 반환
+python
+Apply to instance_seg...
+return Gst.PadProbeReturn.OK
+•	GStreamer 파이프라인이 계속 동작하도록 OK 반환
+________________________________________
+3. 요약
+•	app_callback은 프레임마다 호출되어
+•	프레임 카운트 및 스킵 처리
+•	프레임 데이터 추출 및 해상도 축소
+•	객체 검출 결과 파싱
+•	각 객체별 인스턴스 마스크 추출 및 시각화
+•	결과 출력 및 프레임 저장
+•	실시간 인스턴스 세그멘테이션 결과를 시각화하고,
+다양한 후처리를 할 수 있는 핵심 함수입니다.
+
+Depth Estimation.py 전체 설명
+1. 주요 목적
+•	카메라(또는 비디오 입력)로부터 프레임을 받아
+•	Hailo AI 프로세서로 깊이(Depth) 추정을 수행
+•	각 프레임의 평균 깊이값을 계산하여 콘솔에 출력
+•	(필요시) 후처리 및 통계 확장 가능
+________________________________________
+2. 사용자 콜백 클래스 정의
+python
+Apply to depth.py
+class user_app_callback_class(app_callback_class):
+    def __init__(self):
+        super().__init__()
+    def calculate_average_depth(self, depth_mat):
+        depth_values = np.array(depth_mat).flatten()
+        try:
+            m_depth_values = depth_values[depth_values <= np.percentile(depth_values, 95)]
+        except Exception as e:
+            m_depth_values = np.array([])
+        if len(m_depth_values) > 0:
+            average_depth = np.mean(m_depth_values)
+        else:
+            average_depth = 0
+        return average_depth
+•	app_callback_class를 상속받아 사용자 정의 콜백 클래스 생성
+•	calculate_average_depth:
+•	입력된 depth map(깊이 행렬)에서 상위 5% 이상(이상치) 값을 제외하고
+•	나머지 픽셀의 평균 깊이값을 계산
+________________________________________
+3. 콜백 함수(app_callback) 정의
+•	프레임마다 호출되는 함수로,
+각 프레임의 깊이 정보를 추출하고평균 깊이값을 계산하여 출력주요 동작:
+1.	프레임 카운트 증가
+2.	버퍼(프레임) 유효성 검사
+3.	ROI에서 깊이 정보(HAILO_DEPTH_MASK) 추출
+4.	평균 깊이값 계산 (이상치 제외)
+5.	결과 문자열 출력
+________________________________________
+4. 메인 실행부
+python
+Apply to depth.py
+if __name__ == "__main__":
+    user_data = user_app_callback_class()
+    app = GStreamerDepthApp(app_callback, user_data)
+    app.run()
+•	사용자 콜백 클래스 인스턴스 생성
+•	GStreamer 기반 깊이 추정 파이프라인(GStreamerDepthApp) 생성
+•	파이프라인 실행(app.run())
+________________________________________
+5. 실행 방법
+1) 환경설정
+•	setup_env.sh 스크립트 실행
+bash
+Apply to depth.py
+Run
+  source setup_env.sh
+•	(필요시) 가상환경 활성화
+2) 예제 실행
+•	기본 실행
+bash
+Apply to depth.py
+Run
+  python basic_pipelines/depth.py
+•	입력 소스 변경 등 옵션은 공식 README 참고
+________________________________________
+6. 요약
+•	depth.py는 Hailo AI 프로세서와 Raspberry Pi 5에서 실시간 깊이(Depth) 추정을 수행하는 예제입니다.
+•	각 프레임의 깊이 맵에서 평균 깊이 값을 계산하여 콘솔에 출력합니다.
+•	사용자 콜백을 통해 후처리, 통계, 시각화 등 다양한 확장이 가능합니다.
+
+Depth Estimation.py 코드부분 설명
+ 
+1. 함수 시그니처
+python
+Apply to depth.py
+def app_callback(pad, info, user_data):
+•	pad: GStreamer에서 데이터가 흐르는 연결점(출력 pad)
+•	info: 현재 프레임(버퍼)와 관련된 정보(Gst.PadProbeInfo)
+•	user_data: 사용자 정의 데이터/상태(프레임 카운트, 통계 등)
+________________________________________
+2. 주요 동작 단계별 설명
+1) 프레임 카운트 증가 및 문자열 생성
+python
+Apply to depth.py
+user_data.increment()  # 프레임 카운트 증가
+string_to_print = f"Frame count: {user_data.get_count()}\n"
+•	프레임이 처리될 때마다 카운트 증가
+•	현재까지 처리한 프레임 수를 문자열로 저장
+________________________________________
+2) 버퍼(프레임) 추출 및 유효성 검사
+python
+Apply to depth.py
+buffer = info.get_buffer()  # 현재 도착한 프레임(버퍼) 추출
+if buffer is None:  # 버퍼가 없으면(유효하지 않으면) 바로 리턴
+    return Gst.PadProbeReturn.OK
+________________________________________
+3) ROI에서 깊이 정보 추출
+python
+Apply to depth.py
+roi = hailo.get_roi_from_buffer(buffer)
+depth_mat = roi.get_objects_typed(hailo.HAILO_DEPTH_MASK)
+•	현재 프레임에서 ROI(Region of Interest) 객체 추출
+•	ROI에서 깊이(Depth) 마스크 객체 리스트 추출
+________________________________________
+4) 평균 깊이값 계산
+python
+Apply to depth.py
+if len(depth_mat) > 0:
+    detection_average_depth = user_data.calculate_average_depth(depth_mat[0].get_data())
+else:
+    detection_average_depth = 0
+•	깊이 마스크가 있으면:
+•	첫 번째 마스크의 데이터를 꺼내서
+•	calculate_average_depth() 함수로 평균 깊이값 계산
+•	이 함수는 상위 5% 이상치(outlier)를 제외하고 평균을 구함
+•	깊이 마스크가 없으면 평균 깊이값을 0으로 설정
+________________________________________
+5) 결과 문자열 출력
+python
+Apply to depth.py
+string_to_print += (f"average depth: {detection_average_depth:.2f}\n")
+print(string_to_print)
+•	프레임 번호와 평균 깊이값을 문자열로 출력
+________________________________________
+6) GStreamer에 OK 반환
+python
+Apply to depth.py
+return Gst.PadProbeReturn.OK
+•	GStreamer 파이프라인이 계속 동작하도록 OK 반환
+________________________________________
+3. 요약
+•	app_callback은 프레임마다 호출되어
+•	프레임 카운트 증가
+•	ROI에서 깊이(Depth) 마스크 추출
+•	이상치를 제외한 평균 깊이값 계산
+•	결과(프레임 번호, 평균 깊이)를 콘솔에 출력
+•	실시간으로 각 프레임의 평균 깊이값을 모니터링할 수 있는 핵심 후처리 콜백 함수입니다.
+
+
+
+Hailo TAPPAS - 비디오 처리 파이프라인의 최적화된 실행
+개요
+TAPPAS는 파이프라인 요소와 사전 훈련된 AI 작업을 구현하는 Hailo의 전체 애플리케이션 예제 세트입니다.
+미리 정의된 시스템(소프트웨어 및 하드웨어 플랫폼)에서 특정 사용 사례에 대한 Hailo 시스템 통합 시나리오를 시연합니다. 평가, 참조 코드 및 데모에 사용할 수 있습니다.
+•	개발 시간과 배포 노력을 줄여 출시 시간을 단축합니다.
+•	Hailo 런타임 SW 스택과의 통합 간소화
+•	고객이 애플리케이션을 세부 조정할 수 있는 시작점 제공
+ 
+
+
+
+GStreamer 프레임워크
+GStreamer 원칙
+•	객체 지향 - 모든 GStreamer 객체는 GObject 상속 메서드를 사용하여 확장할 수 있습니다. 모든 플러그인은 동적으로 로드되며 독립적으로 확장 및 업그레이드할 수 있습니다.
+•	GStreamer는 GLib 2.0 객체 모델인 GObject를 따릅니다. GLib 2.0이나 GTK+에 익숙한 프로그래머라면 GStreamer를 쉽게 사용할 수 있을 것입니다.
+•	모든 일반적인 미디어 스트리밍 기능을 캡슐화하는 확장 가능한 핵심 플러그인입니다.
+•	바이너리 전용 플러그인 허용 - 플러그인은 런타임에 로드되는 공유 라이브러리입니다.
+•	고성능
+o	GLib의 GSlice 할당자 사용
+o	참조 카운팅과 쓰기 시 복사 기능은 memcpy의 사용을 최소화합니다.
+o	특수 플러그인을 사용하여 하드웨어 가속을 허용합니다.
+GStreamer 요소
+•	요소 - 데이터 처리/생성/소비에 대한 특정 기능을 가집니다. 이러한 여러 요소를 연결하면 특정 작업을 수행하는 파이프라인을 만들 수 있습니다.
+•	패드 - 요소의 입력 및 출력으로, 다른 요소에 연결될 수 있습니다. 패드는 요소의 "플러그" 또는 "포트"로 볼 수 있으며, 이를 통해 다른 요소와 연결되고 해당 요소에서 데이터가 송수신될 수 있습니다. 데이터 유형은 Caps Negotiation이라는 프로세스를 통해 패드 간에 협상됩니다. 데이터 유형은 GstCaps로 설명됩니다.
+•	Bin - Bin은 요소 컬렉션을 담는 컨테이너입니다. Bin은 요소 자체의 하위 클래스이므로, Bin은 마치 요소처럼 제어할 수 있어 사용자 애플리케이션의 복잡성을 크게 줄여줍니다. 파이프라인은 최상위 Bin입니다. 애플리케이션에 버스를 제공하고 자식 애플리케이션의 동기화를 관리합니다.
+ 
+술어
+NVR(네트워크 비디오 레코더)
+NVR은 IP(인터넷 프로토콜) 비디오 감시 시스템에 사용되는 특수 하드웨어 및 소프트웨어 솔루션입니다. 대부분의 경우, NVR은 IP 네트워크를 통해 IP 카메라의 비디오 스트림을 수집하여 저장하고 재생하는 데 사용됩니다.
+실시간 스트리밍 프로토콜(RTSP)
+엔터테인먼트 및 통신 시스템에서 스트리밍 미디어 서버를 제어하기 위해 설계된 네트워크 제어 프로토콜입니다. 이 프로토콜은 엔드포인트 간의 미디어 세션을 설정하고 제어하는 데 사용됩니다.
+Rockchip 미디어 프로세스 플랫폼(MPP)
+MPP는 멀티미디어(비디오 및 이미지) 처리에 높은 성능을 제공하는 Rockchip SoC용 라이브러리입니다.
+ 
+Hailo Filter – 공부 필요…..
+개요
+Hailofilter는 사용자가 hailonet의 출력 텐서에 후처리 연산을 적용할 수 있도록 하는 요소입니다. 사용자가 작성하는 컴파일된 .so 파일의 진입점을 제공하며, 이 파일 안에서 사용자는 원본 이미지 프레임, 해당 프레임에 대해 네트워크에서 출력된 텐서, 그리고 첨부된 모든 메타데이터에 접근할 수 있습니다. 먼저 hailofilter는 싱크 패드에서 버퍼를 읽은 다음, 제공된 .so 파일에 정의된 필터를 적용하고, 마지막으로 필터링된 버퍼를 소스 패드를 따라 파이프라인으로 전송합니다.
+매개변수
+여기서 가장 중요한 매개변수는 so-path.입니다. 여기서 사용자는 원하는 필터를 적용하는 컴파일된 .so 파일의 경로를 제공합니다. 기본적으로 hailofilter는 .so 파일 내의 filter() 함수를 진입점으로 호출합니다. .so 파일에 여러 진입점이 있는 경우, 예를 들어 네트워크 버전이 약간씩 다른 경우 매개 function-name변수를 통해 적용할 특정 필터 함수를 선택할 수 있습니다. GstVideoFilter 계층 구조의 멤버인 hailofilter 요소는 qos( 서비스 품질qos=false )를 지원합니다. qos는 일반적으로 일정 수준의 성능을 보장하지만, 프레임 손실로 이어질 수 있습니다. 따라서 텐서가 손실되거나 그려지지 않는 것을 방지하기 위해 항상 qos=false를 설정하는 것이 좋습니다 .
+계층
+ 
+
+Writing Your Own Postprocess
+
+Keras 
+어떻게 PyTorch 백엔드를 쓰는지 살펴볼게요
+keras-core(즉, Keras 3)와 PyTorch 설치하기
+먼저, Keras 3(=keras-core)와 PyTorch를 설치해야 해요.
+bash
+코드 복사
+pip install --upgrade "keras-core[torch]"
+pip install --upgrade torch
+o	keras-core[torch]로 설치하면, Keras 3용 PyTorch 종속성들이 함께 깔려요. keras.iokeras.io
+환경 변수로 백엔드 지정하기
+Keras를 import하기 전에, 환경 변수를 설정해 주면 돼요.
+python
+코드 복사
+import os
+os.environ["KERAS_BACKEND"] = "torch"
+import keras_core as keras
+혹은 시스템 전체 설정 파일인 ~/.keras/keras.json에 다음처럼 적어줘도 좋아요:
+jsonc
+코드 복사
+{
+  "floatx": "float32",
+  "epsilon": 1e-07,
+  "backend": "torch",
+  "image_data_format": "channels_last"
+}
+이렇게 하면, Keras가 자동으로 PyTorch를 백엔드로 사용해요. Mediumkeras.io
+
+간단한 예제: MNIST ConvNet 작성해 보기
+python
+코드 복사
+import os
+os.environ["KERAS_BACKEND"] = "torch"   # 먼저 백엔드를 torch로 지정
+import keras_core as keras
+from keras_core import layers, models
+
+# 데이터 로드
+(x_train, y_train), (x_test, y_test) = keras.datasets.mnist.load_data()
+x_train = x_train.astype("float32") / 255.0
+x_test  = x_test.astype("float32") / 255.0
+x_train = x_train.reshape(-1, 28, 28, 1)
+x_test  = x_test.reshape(-1, 28, 28, 1)
+
+# 모델 구성
+model = models.Sequential([
+    layers.Conv2D(32, kernel_size=(3, 3), activation="relu", input_shape=(28, 28, 1)),
+    layers.MaxPooling2D(pool_size=(2, 2)),
+    layers.Flatten(),
+    layers.Dense(128, activation="relu"),
+    layers.Dense(10, activation="softmax"),
+])
+
+model.compile(
+    optimizer="adam",
+    loss="sparse_categorical_crossentropy",
+    metrics=["accuracy"]
+)
+
+# 학습
+model.fit(x_train, y_train, batch_size=64, epochs=1, validation_split=0.1)
+# 평가
+loss, acc = model.evaluate(x_test, y_test)
+print(f"테스트 정확도: {acc:.4f}")
+이 코드는 PyTorch GPU 위에서 돌아가요. (PyTorch가 GPU를 감지하면 자동으로 GPU를 사용합니다.) Mediumkeras.io
+주의사항
+아직 일부 서드파티 패키지(ex. keras-nlp)는 TensorFlow 종속이 남아 있을 수 있어서, 완전한 PyTorch 전용 기능만 쓰려면 제한이 있을 수 있어요. Reddit
+간혹 PyTorch 백엔드에서 학습 속도가 TensorFlow보다 느릴 수 있으니(특히 특정 모델에서는 더 느리다는 보고가 있어요), 퍼포먼스를 비교해 본 뒤 선택하시는 게 좋아요. Stack Overflow
+________________________________________
+요약
+Keras 3부터는 PyTorch 백엔드를 지원해서, keras-core[torch] 설치 + 환경 변수 설정만으로 Keras API를 그대로 PyTorch 위에서 쓸 수 있어요.
+과거 Keras(2.x)는 TensorFlow만 공식 지원했지만, Keras 3로 오면서 다시 “TensorFlow, JAX, PyTorch, (추가로 추론용 OpenVINO)”를 모두 지원하게 되었답니다. keras.iokeras.io
+이제 Keras 스타일 그대로 쓰면서, 내부 연산은 PyTorch에 맡길 수 있으니 너무 편하죠?
+
 
